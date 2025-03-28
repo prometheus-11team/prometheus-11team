@@ -42,7 +42,6 @@ for code, name in indicators.items():
 df_macro = pd.DataFrame(data)
 
 # CSV로 저장 (store data 폴더에)
-os.makedirs('store data', exist_ok=True)
 df_macro.to_csv('../store data/macro_indicators_2020_2024.csv')
 
 print("\n[완료] macro_indicators_2020_2024.csv 파일 저장됨!")

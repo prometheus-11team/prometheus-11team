@@ -1,8 +1,7 @@
 import requests
 import pandas as pd
 import time
-# import json
-from datetime import datetime
+# from datetime import datetime
 
 # M7 기업 CIK 목록
 M7_CIK = {
@@ -15,8 +14,8 @@ M7_CIK = {
     "Tesla": "0001318605"
 }
 
-# 필터링할 회계 연도 범위 (2020-2024)
-FISCAL_YEARS = list(range(2020, 2025))
+# 필터링할 회계 연도 범위 
+FISCAL_YEARS = list(range(2020, 2026)) # 2020년부터 2025.03.(1Q)까지
 
 # SEC EDGAR API 기본 URL
 BASE_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{}.json"
@@ -32,13 +31,13 @@ HEADERS = {
 FINANCIAL_METRICS = {
     "OperatingIncomeLoss": "Operating Income",
     "NetIncomeLoss": "Net Income",
-    "Revenues": "Total Revenue",
-    "Revenue": "Total Revenue",  # 대체 태그
-    "GrossProfit": "Gross Profit",
-    "EarningsPerShareBasic": "EPS Basic",
+    # "Revenues": "Total Revenue", # 결측치 존재하는 칼럼 제거
+    # "Revenue": "Total Revenue",  
+    # "GrossProfit": "Gross Profit",
+    # "EarningsPerShareBasic": "EPS Basic",
     "EarningsPerShareDiluted": "EPS Diluted",
     "Assets": "Total Assets",
-    "Liabilities": "Total Liabilities",
+    # "Liabilities": "Total Liabilities",
     "StockholdersEquity": "Shareholders Equity"
 }
 
@@ -130,9 +129,9 @@ for company_name, cik in M7_CIK.items():
     if company_data:
         company_metrics = extract_financial_metrics(company_name, company_data)
         all_financial_data.extend(company_metrics)
-        print(f"{company_name}의 데이터 처리 완료: {len(company_metrics)}개 보고서 데이터 추출")
+        print(f"✅ {company_name}의 데이터 처리 완료: {len(company_metrics)}개 보고서 데이터 추출")
     else:
-        print(f"{company_name}의 데이터를 가져오지 못했습니다.")
+        print(f"❌ {company_name}의 데이터를 가져오지 못했습니다.")
 
 # 데이터프레임 생성 및 CSV 저장
 if all_financial_data:
@@ -171,7 +170,7 @@ if all_financial_data:
     # timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     # csv_filename = f"M7_financial_data_{timestamp}.csv"
     # df.to_csv(csv_filename, index=False)
-    df.to_csv('../store data/M7_financial_data_2020_2024.csv', index=False)
+    df.to_csv('../store data/M7_financial_data_2020_2025.csv', index=False)
     
     # print(f"\n성공적으로 데이터를 추출하여 {csv_filename} 파일로 저장했습니다.")
     print(f"총 {len(df)} 개의 회계연도 데이터가 추출되었습니다.")

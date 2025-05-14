@@ -1,3 +1,4 @@
+# TODO: SEC API상 실적발표 결측치 대응
 import requests
 import pandas as pd
 import time
@@ -62,10 +63,10 @@ def get_filings(cik):
         print(f"❌ Filings 데이터 가져오기 실패: {e}")
         return []
 
-# 회사 재무 데이터 가져오기
+# 회사  데이터 가져오기
 def get_company_financial_data(company_name, cik):
     url = BASE_URL.format(cik.zfill(10))
-    print(f"{company_name}({cik})의 재무 데이터를 가져오는 중...")
+    print(f"{company_name}({cik})의 실적 데이터를 가져오는 중...")
     try:
         response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
@@ -115,20 +116,9 @@ def extract_financial_metrics(company_name, data, filing_dates):
                         "End Date": end_date
                     }
 
-                # 제출일 매핑; 정확한 End Date에 대응하도록
-                # filing_date = ''
-                # for filing in filing_dates:
-                #     if filing['form'] == form_type and filing['date'] >= end_date:
-                #         filing_date = filing['date']
-                #         break
-                # key = (form_type, end_date)
-                # filing_date = filing_dates.get(key, '')
-
-
                 if display_name not in period_data[period_label] or end_date > period_data[period_label].get('End Date', ''):
                     period_data[period_label][display_name] = value
                     period_data[period_label]['End Date'] = end_date
-                    # period_data[period_label]['filing Date'] = filing_date
 
     for period_label, metrics in period_data.items():
         if len(metrics) > 5:
@@ -136,23 +126,37 @@ def extract_financial_metrics(company_name, data, filing_dates):
     
     return results
 
-# 매핑 함수
+# 정확한 제출일 매핑 함수
+from datetime import datetime
 def map_filing_date(row, filings):
     target_form = row['Report Type']
-    fiscal_year = row['Fiscal Year']
-    period = row['Period']
+    end_date_str = row['End Date']
 
-    # 대략적 매칭 기준
-    if target_form == '10-K':
-        # 보통 다음 연도 2-3월 발표
-        candidates = [f for f in filings if f['form'] == '10-K' and f['filing_date'].startswith(str(fiscal_year + 1)[:4])]
-    elif target_form == '10-Q':
-        # 분기 기준: 해당 연도 내에서 발표되는 보고서 (더 정교하게 fp를 쓰고 싶으면 end date month 기준 활용 가능)
-        candidates = [f for f in filings if f['form'] == '10-Q' and f['filing_date'].startswith(str(fiscal_year))]
+    try:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+    except Exception as e:
+        return None  # 날짜 변환 실패 시 None 반환
 
-    # 가장 가까운 제출일 선택 (가장 최근 것 우선)
-    if candidates:
-        return sorted(candidates, key=lambda x: x['filing_date'])[0]['filing_date']
+    # 대상 양식 필터링
+    candidates = [f for f in filings if f['form'] == target_form]
+
+    # 제출일과 End Date 간 차이 계산 후 가장 가까운 제출일 찾기
+    closest_filing = None
+    min_diff = float('inf')
+
+    for f in candidates:
+        try:
+            filing_date = datetime.strptime(f['filing_date'], "%Y-%m-%d")
+            diff = abs((filing_date - end_date).days)
+            if diff < min_diff:
+                min_diff = diff
+                closest_filing = filing_date
+        except Exception:
+            continue
+
+    #  시차가 너무 차이날 경우 None 처리 : 4개월(120일)
+    if closest_filing and min_diff <= 110:
+        return closest_filing.strftime("%Y-%m-%d")
     else:
         return None
     
@@ -200,12 +204,12 @@ if all_financial_data:
         filings = get_filings(cik.zfill(10))
         company_filings_dict[company_name] = filings
         time.sleep(0.2)
+    print("📅 기업별 실적보고서 제출일 수집 완료! 매핑 중...")
 
-    # 기존 df에 Filing Date 매핑
-    df['filing Date'] = df.apply(lambda row: map_filing_date(row, company_filings_dict.get(row['Company'], [])), axis=1)
-
+    # 기존 df에 실적발표일(기업의 보고서 제출일) 매핑
+    df['Release Date'] = df.apply(lambda row: map_filing_date(row, company_filings_dict.get(row['Company'], [])), axis=1)
     # 날짜 포맷 변환 (매핑된 컬럼에 적용)
-    df['filing Date'] = pd.to_datetime(df['filing Date'], errors='coerce').dt.strftime('%Y-%m-%d')
+    df['Release Date'] = pd.to_datetime(df['Release Date'], errors='coerce').dt.strftime('%Y-%m-%d')
 
 
     df.to_csv('../../store data/M7_financial_data_2020_2025.csv', index=False)

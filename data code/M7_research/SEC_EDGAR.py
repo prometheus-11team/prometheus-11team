@@ -36,34 +36,31 @@ FINANCIAL_METRICS = {
 }
 
 # 제출일 수집 함수
-def get_release_date(cik):
-    url = f"https://data.sec.gov/submissions/CIK{cik.zfill(10)}.json"
+def get_filings(cik):
+    url = f"https://data.sec.gov/submissions/CIK{cik}.json"
     try:
         response = requests.get(url, headers=HEADERS)
         response.raise_for_status()
         data = response.json()
-        time.sleep(0.1)
+        recent_data = data['filings']['recent']
 
-        filings = data.get('filings', {}).get('recent', {})
-        release_map = {}
+        filings = []
+        for i in range(len(recent_data['form'])):
+            form_type = recent_data['form'][i]
+            filing_date = recent_data['filingDate'][i]
+            accession_number = recent_data['accessionNumber'][i]
+            filing_link = f"https://www.sec.gov/Archives/{accession_number.replace('-', '')}"
 
-        forms = filings.get('form', [])
-        dates = filings.get('filingDate', [])
-        periods = filings.get('periodOfReport', [])
-        
-        for i in range(len(forms)):
-            form_type = forms[i]
-            filing_date = dates[i]
-            period_end = periods[i] if i < len(periods) else ''
-            if form_type in ['10-K', '10-Q'] and period_end:
-                key = (form_type, period_end)
-                if key not in release_map or filing_date < release_map[key]:
-                    release_map[key] = filing_date
-
-        return release_map  # (form, period_end) -> release_date
+            if form_type in ['10-K', '10-Q']:
+                filings.append({
+                    "form": form_type,
+                    "filing_date": filing_date,
+                    "link": filing_link
+                })
+        return filings
     except Exception as e:
-        print(f"📄 제출일 정보 가져오기 실패 ({cik}): {e}")
-        return {}
+        print(f"❌ Filings 데이터 가져오기 실패: {e}")
+        return []
 
 # 회사 재무 데이터 가져오기
 def get_company_financial_data(company_name, cik):
@@ -80,7 +77,7 @@ def get_company_financial_data(company_name, cik):
         return None
 
 # 재무 데이터 및 제출일 통합 처리
-def extract_financial_metrics(company_name, data, release_dates):
+def extract_financial_metrics(company_name, data, filing_dates):
     if not data:
         return []
     
@@ -119,19 +116,19 @@ def extract_financial_metrics(company_name, data, release_dates):
                     }
 
                 # 제출일 매핑; 정확한 End Date에 대응하도록
-                # release_date = ''
-                # for filing in release_dates:
+                # filing_date = ''
+                # for filing in filing_dates:
                 #     if filing['form'] == form_type and filing['date'] >= end_date:
-                #         release_date = filing['date']
+                #         filing_date = filing['date']
                 #         break
-                key = (form_type, end_date)
-                release_date = release_dates.get(key, '')
+                # key = (form_type, end_date)
+                # filing_date = filing_dates.get(key, '')
 
 
                 if display_name not in period_data[period_label] or end_date > period_data[period_label].get('End Date', ''):
                     period_data[period_label][display_name] = value
                     period_data[period_label]['End Date'] = end_date
-                    period_data[period_label]['Release Date'] = release_date
+                    # period_data[period_label]['filing Date'] = filing_date
 
     for period_label, metrics in period_data.items():
         if len(metrics) > 5:
@@ -139,15 +136,35 @@ def extract_financial_metrics(company_name, data, release_dates):
     
     return results
 
+# 매핑 함수
+def map_filing_date(row, filings):
+    target_form = row['Report Type']
+    fiscal_year = row['Fiscal Year']
+    period = row['Period']
+
+    # 대략적 매칭 기준
+    if target_form == '10-K':
+        # 보통 다음 연도 2-3월 발표
+        candidates = [f for f in filings if f['form'] == '10-K' and f['filing_date'].startswith(str(fiscal_year + 1)[:4])]
+    elif target_form == '10-Q':
+        # 분기 기준: 해당 연도 내에서 발표되는 보고서 (더 정교하게 fp를 쓰고 싶으면 end date month 기준 활용 가능)
+        candidates = [f for f in filings if f['form'] == '10-Q' and f['filing_date'].startswith(str(fiscal_year))]
+
+    # 가장 가까운 제출일 선택 (가장 최근 것 우선)
+    if candidates:
+        return sorted(candidates, key=lambda x: x['filing_date'])[0]['filing_date']
+    else:
+        return None
+    
 # 전체 실행
 all_financial_data = []
 
 for company_name, cik in M7_CIK.items():
     company_data = get_company_financial_data(company_name, cik)
-    release_dates = get_release_date(cik)
+    filing_dates = get_filings(cik)
     
     if company_data:
-        company_metrics = extract_financial_metrics(company_name, company_data, release_dates)
+        company_metrics = extract_financial_metrics(company_name, company_data, filing_dates)
         all_financial_data.extend(company_metrics)
         print(f"✅ {company_name}의 데이터 처리 완료: {len(company_metrics)}개 보고서 추출")
     else:
@@ -157,7 +174,7 @@ for company_name, cik in M7_CIK.items():
 if all_financial_data:
     df = pd.DataFrame(all_financial_data)
 
-    columns = ['Company', 'Fiscal Year', 'Period', 'Report Type', 'End Date', 'Release Date']
+    columns = ['Company', 'Fiscal Year', 'Period', 'Report Type', 'End Date', 'filing Date']
     metric_columns = [v for v in FINANCIAL_METRICS.values()]
     columns.extend(metric_columns)
 
@@ -165,7 +182,7 @@ if all_financial_data:
     df = df[available_columns]
 
     for col in df.columns:
-        if col not in ['Company', 'Fiscal Year', 'Period', 'Report Type', 'End Date', 'Release Date', 'EPS Diluted']:
+        if col not in ['Company', 'Fiscal Year', 'Period', 'Report Type', 'End Date', 'filing Date', 'EPS Diluted']:
             try:
                 df[col] = pd.to_numeric(df[col], errors='ignore')
                 if not col.startswith('EPS'):
@@ -174,11 +191,24 @@ if all_financial_data:
                 print(f"{col} 변환 오류: {e}")
 
     df['End Date'] = pd.to_datetime(df['End Date']).dt.strftime('%Y-%m-%d')
-    df['Release Date'] = pd.to_datetime(df['Release Date'], errors='coerce').dt.strftime('%Y-%m-%d')
 
-    df = df.sort_values(['Company', 'Fiscal Year', 'Period'])
+    df = df.sort_values(['Company', 'Fiscal Year', 'Period']) # 정렬
+
+    # 기업실적 보고서 제출일 통합
+    company_filings_dict = {}
+    for company_name, cik in M7_CIK.items(): # filings dict 수집
+        filings = get_filings(cik.zfill(10))
+        company_filings_dict[company_name] = filings
+        time.sleep(0.2)
+
+    # 기존 df에 Filing Date 매핑
+    df['filing Date'] = df.apply(lambda row: map_filing_date(row, company_filings_dict.get(row['Company'], [])), axis=1)
+
+    # 날짜 포맷 변환 (매핑된 컬럼에 적용)
+    df['filing Date'] = pd.to_datetime(df['filing Date'], errors='coerce').dt.strftime('%Y-%m-%d')
+
+
     df.to_csv('../../store data/M7_financial_data_2020_2025.csv', index=False)
-
     print(f"\n총 {len(df)} 개의 회계연도 데이터가 저장되었습니다.")
     print("\n📊 데이터 미리보기:")
     print(df.head())

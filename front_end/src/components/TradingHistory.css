@@ -1,0 +1,341 @@
+.trading-history-bg {
+  min-height: 100vh;
+  width: 100%;
+  background: #121a21;
+}
+
+.trading-history-header {
+  width: 100%;
+  background: #121a21;
+  border-bottom: 1px solid #222c36;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  box-sizing: border-box;
+}
+
+.header-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  height: 64px;
+  padding: 0 32px;
+  box-sizing: border-box;
+}
+
+.logo-section {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.navigation-menu {
+  display: flex;
+  gap: 36px;
+  flex: 1;
+  justify-content: center;
+}
+
+.nav-item {
+  color: #94adc7;
+  font-size: 15px;
+  font-weight: 400;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.nav-item.active, .nav-item.nav-active {
+  color: #fff;
+  font-weight: 700;
+}
+
+.user-section {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+}
+
+.user-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  margin-left: 0;
+  flex: 0 0 auto;
+  align-self: center;
+}
+
+.trading-history-main {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 96px 32px 0 32px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.trading-history-container {
+  display: flex;
+  width: 100%;
+  max-width: 1119px;
+  padding: 20px 23px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  /* background: #fff; */
+  position: relative;
+  /* height: 314px; */
+  background: transparent;
+}
+
+.trading-history-title {
+  align-self: stretch;
+  color: #fff;
+  font-family:
+    Inter,
+    -apple-system,
+    Roboto,
+    Helvetica,
+    sans-serif;
+  font-size: 20px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: normal;
+  position: relative;
+}
+
+/* Table Container */
+.trading-history-table {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: stretch;
+  background: #fafcff;
+  position: relative;
+}
+
+/* Table Header */
+.table-header {
+  display: flex;
+  height: 40px;
+  padding: 8px 16px;
+  align-items: center;
+  gap: 46px;
+  align-self: stretch;
+  background: #f2f5fc;
+  position: relative;
+}
+
+.header-cell {
+  color: #21212e;
+  font-family:
+    Inter,
+    -apple-system,
+    Roboto,
+    Helvetica,
+    sans-serif;
+  font-size: 16px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: normal;
+  position: relative;
+  flex: 1;
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Table Body */
+.table-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  align-self: stretch;
+  position: relative;
+}
+
+/* Table Rows */
+.table-row {
+  display: flex;
+  height: 40px;
+  padding: 8px 16px;
+  align-items: center;
+  gap: 32px;
+  align-self: stretch;
+  background: #fff;
+  position: relative;
+}
+
+.table-row:nth-child(even) {
+  background: #fafcff;
+}
+
+/* Table Cells */
+.table-cell {
+  font-family:
+    Inter,
+    -apple-system,
+    Roboto,
+    Helvetica,
+    sans-serif;
+  font-size: 15px;
+  font-style: normal;
+  line-height: normal;
+  position: relative;
+  flex: 1;
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center !important;
+  color: #21212e !important;
+  font-weight: 500;
+}
+
+.asset-cell, .type-cell, .quantity-cell, .price-cell, .profit-cell, .date-cell, .symbol-cell {
+  justify-content: center !important;
+  align-items: center !important;
+  text-align: center !important;
+  color: #21212e !important;
+}
+
+/* Date Cell */
+.date-cell {
+  color: #000;
+  font-weight: 700;
+}
+
+/* Symbol Cell */
+.symbol-cell {
+  color: #21212e;
+  font-weight: 700;
+}
+
+/* Type Cell */
+.type-cell {
+  font-weight: 400;
+}
+
+.buy-type {
+  color: #e53333;
+}
+
+.sell-type {
+  color: #001be6;
+}
+
+/* Quantity Cell */
+.quantity-cell {
+  color: #21212e;
+  font-weight: 400;
+}
+
+/* Price Cell */
+.price-cell {
+  color: #21212e;
+  font-weight: 400;
+}
+
+/* Profit/Loss Cell */
+.profit-cell {
+  color: #21212e;
+  font-weight: 400;
+}
+
+/* Responsive Design */
+@media (max-width: 1200px) {
+  .trading-history-container {
+    max-width: 100%;
+    padding: 16px 20px;
+  }
+
+  .table-header,
+  .table-row {
+    gap: 20px;
+  }
+
+  .header-cell,
+  .table-cell {
+    font-size: 14px;
+    min-width: 60px;
+  }
+}
+
+@media (max-width: 768px) {
+  .trading-history-container {
+    padding: 16px;
+  }
+
+  .table-header,
+  .table-row {
+    gap: 10px;
+    overflow-x: auto;
+  }
+
+  .header-cell,
+  .table-cell {
+    font-size: 12px;
+    min-width: 50px;
+  }
+
+  .trading-history-title {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 480px) {
+  .trading-history-container {
+    padding: 12px;
+    height: auto;
+  }
+
+  .table-header,
+  .table-row {
+    flex-direction: column;
+    height: auto;
+    gap: 5px;
+    padding: 12px;
+  }
+
+  .header-cell,
+  .table-cell {
+    min-width: 100%;
+    padding: 4px 0;
+  }
+}
+
+@media (max-width: 900px) {
+  .header-content {
+    padding: 0 12px;
+  }
+  .trading-history-main {
+    padding: 96px 8px 0 8px;
+  }
+  .trading-history-container {
+    max-width: 100%;
+    padding: 16px 20px;
+  }
+}
+
+@media (max-width: 600px) {
+  .header-content {
+    flex-direction: column;
+    height: auto;
+    padding: 8px 2px;
+  }
+  .trading-history-main {
+    padding: 80px 2px 0 2px;
+  }
+  .trading-history-title {
+    font-size: 18px;
+  }
+}

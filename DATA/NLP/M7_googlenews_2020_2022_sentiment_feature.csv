@@ -1,4 +1,4 @@
-ticker,created,sentiment_score
+tic,date,sentiment_score
 AAPL,2020-01-02,0.0
 AAPL,2020-01-03,0.0
 AAPL,2020-01-04,0.0

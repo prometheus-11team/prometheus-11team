@@ -17,13 +17,13 @@ os.makedirs("models", exist_ok=True)
 # =============================================================================
 
 # 주식 데이터 불러오기
-df_stock = pd.read_csv("/Users/gamjawon/FinRL-Library/data/M7_stock_data_with_indicators.csv")
+df_stock = pd.read_csv("/Users/gamjawon/prometheus-11team/FinRL-Library/examples/data/M7_stock_data_with_indicators.csv")
 df_stock["date"] = pd.to_datetime(df_stock["date"])
 df_stock = df_stock.rename(columns={"ticker": "tic"})
 df_stock = df_stock.sort_values(["date", "tic"]).reset_index(drop=True)
 
 # 거시경제 지표 불러오기
-df_macro = pd.read_csv("/Users/gamjawon/FinRL-Library/data/macro_indicators_2020_2024.csv")
+df_macro = pd.read_csv("/Users/gamjawon/prometheus-11team/DATA/technical/macro_indicators_2020_2025-03.csv")
 df_macro["date"] = pd.to_datetime(df_macro["date"])
 df_macro = df_macro.sort_values("date").reset_index(drop=True)
 

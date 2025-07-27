@@ -1,4 +1,4 @@
-stock,created,sentiment_score,importance
+tic,date,sentiment_score,importance
 AAPL,2023-09-01,0.0,0.5
 AAPL,2023-09-02,0.0,0.11920292202211755
 AAPL,2023-09-03,0.0,0.11920292202211755

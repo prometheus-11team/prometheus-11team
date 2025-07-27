@@ -293,6 +293,85 @@ class StockTradingEnv(gym.Env):
 
         else:
             actions = actions * self.hmax
+            max_position = self.hmax * 0.3  # 한 종목에 30% 이상 투자 금지
+            actions = np.clip(actions, -max_position, max_position)
+            # 종합 리스크 관리 시스템
+            current_total_asset = self.state[0] + sum(
+                np.array(self.state[1:(self.stock_dim + 1)]) * 
+                np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
+            )
+
+            risk_level = "LOW"
+            sell_adjustment = 1.0
+
+            if len(self.asset_memory) > 1:
+                # 드로우다운 계산
+                peak_value = max(self.asset_memory)
+                drawdown = (peak_value - current_total_asset) / peak_value
+                
+                # 리스크 레벨 결정
+                if drawdown > 0.20:  # 20% 이상 손실
+                    risk_level = "CRITICAL"
+                    sell_adjustment = 0.1  # 매도량 90% 감소
+                elif drawdown > 0.15:  # 15% 이상 손실
+                    risk_level = "HIGH"
+                    sell_adjustment = 0.3  # 매도량 70% 감소
+                elif drawdown > 0.10:  # 10% 이상 손실
+                    risk_level = "MEDIUM"
+                    sell_adjustment = 0.6  # 매도량 40% 감소
+                
+                # 매도 액션 조정
+                original_sell_count = np.sum(actions < 0)
+                for i in range(len(actions)):
+                    if actions[i] < 0:
+                        actions[i] = int(actions[i] * sell_adjustment)
+                
+                
+            #===================================================
+            min_active_stocks = 7
+            current_active = np.sum(np.abs(actions) > 20)
+
+            if current_active < min_active_stocks:
+                # 비활성 종목들을 찾아서 소량 거래 추가
+                inactive_indices = np.where(np.abs(actions) <= 20)[0]
+                needed_stocks = min_active_stocks - current_active
+                
+                # 필요한 만큼만 활성화
+                for i in range(min(needed_stocks, len(inactive_indices))):
+                    # 현재 보유량 확인해서 매수/매도 결정
+                    holding = self.state[inactive_indices[i] + self.stock_dim + 1]
+                    
+                    if holding > 100:  # 100주 이상 보유시 일부 매도
+                        actions[inactive_indices[i]] = -30
+                    else:  # 적게 보유시 매수
+                        actions[inactive_indices[i]] = 40
+                
+            # 추가: 거래 빈도 조절 (선택사항)
+            if self.day % 2 != 0:  # 격일 거래로 제한
+                actions = actions * 0.7  # 거래량 30% 감소
+            # =======================================
+            ###
+            # 현금 부족시 강제 매도
+            current_cash = self.state[0]
+            if current_cash < 50000:  # 현금이 5만원 미만이면
+                # 가장 많이 보유한 종목 일부 매도
+                holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
+                max_holding_idx = np.argmax(holdings)
+                if holdings[max_holding_idx] > 100:  # 100주 이상 보유시에만
+                    actions[max_holding_idx] = -100  # 100주 강제 매도
+                   
+
+            # 일정 기간마다 리밸런싱 강제
+            if self.day % 30 == 0 and self.day > 0:  # 30일마다
+                holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
+                total_holdings = np.sum(holdings)
+                if total_holdings > 0:
+                    # 평균 이상 보유 종목들 일부 매도
+                    avg_holding = total_holdings / self.stock_dim
+                    for i, holding in enumerate(holdings):
+                        if holding > avg_holding * 1.5:  # 평균의 1.5배 이상 보유시
+                            actions[i] = -50  # 50주 매도
+            ###
             actions = actions.astype(int)
             if self.turbulence_threshold is not None:
                 if self.turbulence >= self.turbulence_threshold:
@@ -358,51 +437,41 @@ class StockTradingEnv(gym.Env):
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
             )
             
-            # === 향상된 보상 함수 ===
-            # 1. 기본 포트폴리오 가치 변화 보상
+            # === 재설계된 보상 함수 ===
             basic_reward = end_total_asset - begin_total_asset
-            
-            # 2. 거래 활성화 보상
-            # 매도 거래에 대한 추가 보상
+
+            # 현금 비중 최적화 보상
+            cash_ratio = self.state[0] / end_total_asset
+            optimal_cash_ratio = 0.1  # 10% 현금 보유가 이상적
+            cash_penalty = -abs(cash_ratio - optimal_cash_ratio) * 0.1
+
+            # 매도 활성화 특별 보상
             sell_actions_count = np.sum(actions < 0)
             buy_actions_count = np.sum(actions > 0)
-            
-            # 매도 활성화 보상 (적절한 매도를 유도)
+
+            sell_bonus = 0
             if sell_actions_count > 0:
-                trading_reward += sell_actions_count * 0.005  # 매도 1회당 소량 보상
-            
-            # 3. 포트폴리오 다양성 보상
-            current_holdings = np.array(self.state[1 : (self.stock_dim + 1)])
-            non_zero_holdings = np.sum(current_holdings > 0)
-            if non_zero_holdings >= 3:  # 3개 이상 종목 보유시 다양성 보상
-                portfolio_diversification_bonus = 0.01
-            
-            # 4. 리스크 관리 보상
-            risk_management_reward = 0
-            if hasattr(self, 'turbulence') and self.turbulence is not None:
-                if self.turbulence > 1.0 and sell_actions_count > 0:
-                    # 고변동성 상황에서 매도하면 리스크 관리 보상
-                    risk_management_reward = 0.02
-            
-            # 5. 샤프 비율 개선 보상 (장기적 성과)
-            if len(self.asset_memory) > 30:  # 30일 이상 데이터가 있을 때
-                recent_returns = pd.Series(self.asset_memory[-30:]).pct_change().dropna()
-                if len(recent_returns) > 0 and recent_returns.std() > 0:
-                    recent_sharpe = recent_returns.mean() / recent_returns.std()
-                    if recent_sharpe > 0.1:  # 양의 샤프 비율 달성시 보상
-                        risk_management_reward += recent_sharpe * 0.01
-            
-            # 6. 과도한 거래 페널티 (너무 빈번한 거래 방지)
-            total_actions = sell_actions_count + buy_actions_count
-            if total_actions > self.stock_dim * 0.8:  # 80% 이상 종목에서 거래시 페널티
-                trading_reward -= 0.01
-            
-            # 최종 보상 계산
+                sell_bonus = 0.04  # 매도시 큰 보상
+
+            # 균형잡힌 거래 보상
+            if sell_actions_count > 0 and buy_actions_count > 0:
+                balanced_trading_bonus = 0.05  # 매수와 매도 모두 하면 보너스
+            else:
+                balanced_trading_bonus = 0
+
+            # 과도한 보유 페널티
+            holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
+            if np.sum(holdings) > 300:  # 총 3000주 이상 보유시 페널티
+                overholding_penalty = -0.05
+            else:
+                overholding_penalty = 0
+
             total_reward = (
-                basic_reward +                    # 포트폴리오 가치 변화
-                trading_reward +                  # 거래 관련 보상
-                portfolio_diversification_bonus + # 다양성 보상
-                risk_management_reward           # 리스크 관리 보상
+                basic_reward + 
+                cash_penalty + 
+                sell_bonus + 
+                balanced_trading_bonus + 
+                overholding_penalty
             )
             
             self.asset_memory.append(end_total_asset)

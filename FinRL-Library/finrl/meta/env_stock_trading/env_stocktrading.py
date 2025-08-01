@@ -81,6 +81,7 @@ class StockTradingEnv(gym.Env):
         self.cost = 0
         self.trades = 0
         self.episode = 0
+        self.last_buy_day = {}
         # memorize all the total balance change
         self.asset_memory = [
             self.initial_amount
@@ -220,7 +221,6 @@ class StockTradingEnv(gym.Env):
     def step(self, actions):
         self.terminal = self.day >= len(self.df.index.unique()) - 1
         if self.terminal:
-            # Terminal state handling (기존 코드 그대로)
             if self.make_plots:
                 self._make_plot()
             end_total_asset = self.state[0] + sum(
@@ -232,9 +232,7 @@ class StockTradingEnv(gym.Env):
                 self.state[0]
                 + sum(
                     np.array(self.state[1 : (self.stock_dim + 1)])
-                    * np.array(
-                        self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)]
-                    )
+                    * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
                 )
                 - self.asset_memory[0]
             )
@@ -261,44 +259,22 @@ class StockTradingEnv(gym.Env):
                     print(f"Sharpe: {sharpe:0.3f}")
                 print("=================================")
 
-            # Save results (same as original)
             if (self.model_name != "") and (self.mode != ""):
                 df_actions = self.save_action_memory()
-                df_actions.to_csv(
-                    "results/actions_{}_{}_{}.csv".format(
-                        self.mode, self.model_name, self.iteration
-                    )
-                )
-                df_total_value.to_csv(
-                    "results/account_value_{}_{}_{}.csv".format(
-                        self.mode, self.model_name, self.iteration
-                    ),
-                    index=False,
-                )
-                df_rewards.to_csv(
-                    "results/account_rewards_{}_{}_{}.csv".format(
-                        self.mode, self.model_name, self.iteration
-                    ),
-                    index=False,
-                )
+                df_actions.to_csv(f"results/actions_{self.mode}_{self.model_name}_{self.iteration}.csv")
+                df_total_value.to_csv(f"results/account_value_{self.mode}_{self.model_name}_{self.iteration}.csv", index=False)
+                df_rewards.to_csv(f"results/account_rewards_{self.mode}_{self.model_name}_{self.iteration}.csv", index=False)
                 plt.plot(self.asset_memory, "r")
-                plt.savefig(
-                    "results/account_value_{}_{}_{}.png".format(
-                        self.mode, self.model_name, self.iteration
-                    )
-                )
+                plt.savefig(f"results/account_value_{self.mode}_{self.model_name}_{self.iteration}.png")
                 plt.close()
 
             return self.state, self.reward, self.terminal, False, {}
 
         else:
             actions = actions * self.hmax
-            max_position = self.hmax * 0.3  # 한 종목에 30% 이상 투자 금지
+            max_position = self.hmax * 0.3
             actions = np.clip(actions, -max_position, max_position)
-            
-            # ==============================================
-            # 종합 리스크 관리 시스템 (개선된 버전)
-            # ==============================================
+
             current_total_asset = self.state[0] + sum(
                 np.array(self.state[1:(self.stock_dim + 1)]) * 
                 np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
@@ -307,121 +283,113 @@ class StockTradingEnv(gym.Env):
             risk_level = "LOW"
             sell_adjustment = 1.0
             risk_mode = False
-
             if len(self.asset_memory) > 1:
-                # 드로우다운 계산
                 peak_value = max(self.asset_memory)
                 drawdown = (peak_value - current_total_asset) / peak_value
-                
-                # 리스크 레벨 결정
-                if drawdown > 0.20:  # 20% 이상 손실
+                if drawdown > 0.40:
                     risk_level = "CRITICAL"
-                    sell_adjustment = 0.1  # 매도량 90% 감소
+                    sell_adjustment = 0.1
                     risk_mode = True
-                elif drawdown > 0.15:  # 15% 이상 손실
+                elif drawdown > 0.30:
                     risk_level = "HIGH"
-                    sell_adjustment = 0.2  # 매도량 80% 감소
+                    sell_adjustment = 0.2
                     risk_mode = True
-                elif drawdown > 0.12:  # 12% 이상 손실
+                elif drawdown > 0.25:
                     risk_level = "MEDIUM"
-                    sell_adjustment = 0.4  # 매도량 60% 감소
+                    sell_adjustment = 0.4
                     risk_mode = True
-                
-                # 매도 액션 조정
+
                 if risk_mode:
                     for i in range(len(actions)):
                         if actions[i] < 0:
                             actions[i] = int(actions[i] * sell_adjustment)
-                    
-            # ==============================================
-            # 리스크 모드가 아닐 때만 추가 거래 로직 실행
-            # ==============================================
+
             if not risk_mode:
-                # 7종목 강제 참여 (리스크 모드 아닐 때만)
-                min_active_stocks = 5  # 7 → 5로 줄임
-                current_active = np.sum(np.abs(actions) > 20)
+                holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
+                stocks_with_position = np.sum(holdings > 0)
+                if self.day < 30:
+                    for i in range(self.stock_dim):
+                        if holdings[i] == 0 and self.state[0] > 10000:
+                            actions[i] = max(actions[i], 50)
+                elif stocks_with_position < 7:
+                    no_position_indices = np.where(holdings == 0)[0]
+                    if self.state[0] > 20000 and len(no_position_indices) > 0:
+                        import random
+                        selected_idx = random.choice(no_position_indices)
+                        actions[selected_idx] = 80
+                    current_active = np.sum(np.abs(actions) > 1)
+                    if current_active < 7:
+                        inactive_indices = np.where(np.abs(actions) <= 5)[0]
+                        needed_stocks = 7 - current_active
+                        for i in range(min(needed_stocks, len(inactive_indices))):
+                            idx = inactive_indices[i]
+                            holding = self.state[idx + self.stock_dim + 1]
+                            if holding > 100:
+                                actions[idx] = -30
+                            elif holding > 0:
+                                actions[idx] = 20 if np.random.random() > 0.5 else -20
+                            else:
+                                actions[idx] = 40
+                    if self.state[0] < 20000:
+                        holdings_with_idx = [(holdings[i], i) for i in range(len(holdings))]
+                        holdings_with_idx.sort(reverse=True)
+                        for i in range(min(3, len(holdings_with_idx))):
+                            if holdings_with_idx[i][0] > 50:
+                                actions[holdings_with_idx[i][1]] = -30
 
-                if current_active < min_active_stocks:
-                    inactive_indices = np.where(np.abs(actions) <= 20)[0]
-                    needed_stocks = min_active_stocks - current_active
-                    
-                    for i in range(min(needed_stocks, len(inactive_indices))):
-                        holding = self.state[inactive_indices[i] + self.stock_dim + 1]
-                        
-                        if holding > 100:
-                            actions[inactive_indices[i]] = -20  # 30 → 20으로 줄임
-                        else:
-                            actions[inactive_indices[i]] = 25   # 40 → 25로 줄임
-
-                # 현금 부족시 최소한의 매도만 (리스크 모드 아닐 때만)
-                current_cash = self.state[0]
-                if current_cash < 30000:  # 50000 → 30000으로 줄임
-                    holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
-                    max_holding_idx = np.argmax(holdings)
-                    if holdings[max_holding_idx] > 200:  # 100 → 200으로 높임
-                        actions[max_holding_idx] = -50  # 100 → 50으로 줄임
-
-            # 거래 빈도 조절 (리스크 레벨에 따라)
             if risk_mode:
-                # 리스크 모드에서는 거래량 대폭 감소
-                if risk_level == "CRITICAL":
-                    actions = actions * 0.1  # 90% 감소
-                elif risk_level == "HIGH":
-                    actions = actions * 0.3  # 70% 감소
-                else:  # MEDIUM
-                    actions = actions * 0.5  # 50% 감소
-            elif self.day % 2 != 0:  # 평상시 격일 거래
-                actions = actions * 0.7
-            
-            # 월간 리밸런싱은 리스크 모드 아닐 때만
+                if risk_level == "CRITICAL": actions = actions * 0.4
+                elif risk_level == "HIGH": actions = actions * 0.6
+                else: actions = actions * 0.8
+            elif self.day % 3 == 0:
+                actions = actions * 0.8
+
             if not risk_mode and self.day % 30 == 0 and self.day > 0:
                 holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
                 total_holdings = np.sum(holdings)
                 if total_holdings > 0:
                     avg_holding = total_holdings / self.stock_dim
                     for i, holding in enumerate(holdings):
-                        if holding > avg_holding * 2.0:  # 1.5 → 2.0으로 높임
-                            actions[i] = -25  # 50 → 25로 줄임
+                        if holding > avg_holding * 2.5:
+                            actions[i] = -20
+                        elif holding == 0:
+                            actions[i] = 30
 
             actions = actions.astype(int)
-            
+
             if self.turbulence_threshold is not None:
                 if self.turbulence >= self.turbulence_threshold:
                     actions = np.array([-self.hmax] * self.stock_dim)
-            
+
             begin_total_asset = self.state[0] + sum(
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
             )
 
-            # 거래 전 주식 보유량과 가격 저장 (보상 계산용)
             prev_holdings = np.array(self.state[1 : (self.stock_dim + 1)])
             current_prices = np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
-            
+
             argsort_actions = np.argsort(actions)
             sell_index = argsort_actions[: np.where(actions < 0)[0].shape[0]]
             buy_index = argsort_actions[::-1][: np.where(actions > 0)[0].shape[0]]
 
-            # 매도/매수 관련 보상 변수 초기화
             trading_reward = 0
-            
-            # 매도 실행 및 보상 계산
+            immediate_sell_penalty = 0
+
             for index in sell_index:
                 prev_shares = self.state[index + self.stock_dim + 1]
                 if prev_shares > 0:
                     sell_amount = min(abs(actions[index]), prev_shares)
-                    cash_reward = sell_amount * current_prices[index] * 0.001
-                    trading_reward += cash_reward
-                    
+                    if self.last_buy_day.get(index, -10) >= self.day - 1:
+                        immediate_sell_penalty -= 0.1
                 actions[index] = self._sell_stock(index, actions[index]) * (-1)
 
-            # 매수 실행
             for index in buy_index:
                 actions[index] = self._buy_stock(index, actions[index])
+                self.last_buy_day[index] = self.day
 
             self.actions_memory.append(actions)
 
-            # State update
             self.day += 1
             self.data = self.df.loc[self.day, :]
             if self.turbulence_threshold is not None:
@@ -435,63 +403,62 @@ class StockTradingEnv(gym.Env):
                 np.array(self.state[1 : (self.stock_dim + 1)])
                 * np.array(self.state[(self.stock_dim + 1) : (self.stock_dim * 2 + 1)])
             )
-            
-            # === 재설계된 보상 함수 ===
-            basic_reward = end_total_asset - begin_total_asset
 
-            # 리스크 관리 보상 추가
+            basic_reward = end_total_asset - begin_total_asset
             risk_management_reward = 0
             if risk_mode and len(self.asset_memory) > 1:
-                # 드로우다운 개선시 보상
-                prev_drawdown = (max(self.asset_memory[:-1]) - self.asset_memory[-1]) / max(self.asset_memory[:-1]) if len(self.asset_memory) > 1 else 0
+                prev_drawdown = (max(self.asset_memory[:-1]) - self.asset_memory[-1]) / max(self.asset_memory[:-1])
                 current_drawdown = (max(self.asset_memory) - current_total_asset) / max(self.asset_memory)
-                
-                if current_drawdown < prev_drawdown:  # 드로우다운 개선시
+                if current_drawdown < prev_drawdown:
                     risk_management_reward = 0.1
 
-            # 현금 비중 최적화 보상
             cash_ratio = self.state[0] / end_total_asset if end_total_asset > 0 else 0
             optimal_cash_ratio = 0.1
-            cash_penalty = -abs(cash_ratio - optimal_cash_ratio) * 0.1
+            cash_penalty = -abs(cash_ratio - optimal_cash_ratio) * 0.05
 
-            # 매도 활성화 특별 보상
+            holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
+            stocks_with_position = np.sum(holdings > 0)
+            if stocks_with_position >= 7:
+                diversity_reward = 0.5
+            elif stocks_with_position >= 5:
+                diversity_reward = 0.1
+            else:
+                diversity_reward = -0.5
+
+            num_trades = np.sum(np.abs(actions) > 0)
+            transaction_cost_penalty = -num_trades * 0.001
+
+            active_actions = np.sum(np.abs(actions) > 10)
+            action_diversity_bonus = 0.1 if active_actions >= 6 else -0.05
+
             sell_actions_count = np.sum(actions < 0)
             buy_actions_count = np.sum(actions > 0)
-
-            sell_bonus = 0
-            if sell_actions_count > 0:
-                sell_bonus = 0.04
-
-            # 균형잡힌 거래 보상
-            if sell_actions_count > 0 and buy_actions_count > 0:
-                balanced_trading_bonus = 0.05
-            else:
-                balanced_trading_bonus = 0
-
-            # 과도한 보유 페널티
-            holdings = np.array(self.state[(self.stock_dim + 1):(self.stock_dim * 2 + 1)])
-            if np.sum(holdings) > 3000:
-                overholding_penalty = -0.05
-            else:
-                overholding_penalty = 0
+            sell_bonus = 0.02 if sell_actions_count > 0 else 0
+            balanced_trading_bonus = 0.03 if sell_actions_count > 0 and buy_actions_count > 0 else 0
+            overholding_penalty = -0.03 if np.sum(holdings) > 3000 else 0
 
             total_reward = (
-                basic_reward + 
-                risk_management_reward +  # 새로 추가
-                cash_penalty + 
-                sell_bonus + 
-                balanced_trading_bonus + 
+                basic_reward +
+                immediate_sell_penalty +
+                diversity_reward +
+                transaction_cost_penalty +
+                action_diversity_bonus +
+                risk_management_reward +
+                cash_penalty +
+                sell_bonus +
+                balanced_trading_bonus +
                 overholding_penalty
             )
-            
+
             self.asset_memory.append(end_total_asset)
             self.date_memory.append(self._get_date())
             self.reward = total_reward
             self.rewards_memory.append(self.reward)
             self.reward = self.reward * self.reward_scaling
-            self.state_memory.append(self.state)
+            self.state_memory.append(self.state.copy())
 
             return self.state, self.reward, self.terminal, False, {}
+    
     def reset(
         self,
         *,

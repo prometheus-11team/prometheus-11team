@@ -518,11 +518,19 @@ def main():
     agent = DRLAgent(env=env_train)
     
     # TD3 모델 생성 및 학습
-    model = agent.get_model("td3")
+    model_kwargs = {
+        "learning_rate": 3e-4,
+        "buffer_size": 1000000,
+        "learning_starts": 1000,
+        "batch_size": 100
+    }
+
+    model = agent.get_model("td3", model_kwargs=model_kwargs)
+    
     trained_model = agent.train_model(
         model=model,
         tb_log_name="td3_with_enhanced_features",
-        total_timesteps=150000
+        total_timesteps=500000,  # 150000 -> 500000으로 증가
     )
     
     
